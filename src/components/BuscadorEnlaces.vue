@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 
 // Refs para datos reactivos
 const resultadosBusqueda = ref([]);
-
+const resultados = [];
 // Obtiene el token de acceso de Spotify
 async function obtenerTokenSpotify() {
   const client_id = '5441ac276fc046da98adf7ffbfdb4924';
@@ -28,6 +28,9 @@ async function obtenerTokenSpotify() {
 }
 
 function cargarArchivo(event) {
+
+  resultadosBusqueda.value = []; // Limpia los resultados reactivos
+
   const file = event.target.files[0];
   if (file) {
     const reader = new FileReader();
@@ -60,7 +63,7 @@ async function procesarYBuscar(contenido) {
     // Asumiendo que el separador entre el género y el artista - título del álbum es '\t'
     let [genero, artistaTitulo] = fila; // No split needed here
     let [artista, tituloAlbum] = artistaTitulo.split(' - ').map(parte => parte.trim());
-
+    console.log(artista)
     if (artista && tituloAlbum) {
       return buscarAlbumEnSpotify(genero, artista, tituloAlbum)
         .then(url => {
@@ -72,7 +75,7 @@ async function procesarYBuscar(contenido) {
         });
     } else {
       // En caso de que alguna línea no cumpla con el formato esperado después del trim
-      console.warn(`Línea no válida o con formato incorrecto: "${linea}"`);
+      console.warn(`Línea no válida o con formato incorrecto: "${artistaTitulo}"`);
       return Promise.resolve(null); // Retorna null para estas líneas y las filtrará después
     }
   });
@@ -88,11 +91,6 @@ async function procesarYBuscar(contenido) {
   // Actualiza el estado/reactivo de Vue con los resultados ordenados
   resultadosBusqueda.value = resultados;
 }
-
-function ordenarAlfabeticamente() {
-  resultadosBusqueda.value.sort((a, b) => a.artista.localeCompare(b.artista));
-}
-
 
 // Busca el álbum en Spotify por nombre de artista y título de álbum
 async function buscarAlbumEnSpotify(genero, artista, tituloAlbum) {
@@ -140,18 +138,24 @@ async function buscarAlbumEnSpotify(genero, artista, tituloAlbum) {
 }
 
 function exportarAExcel() {
-  // Asegúrate de que la ordenación no introduzca duplicados. Si es necesario, crea una copia de los datos.
-  const resultadosOrdenados = [...resultadosBusqueda.value].sort((a, b) => {
-    // Compara por artista y luego por título de álbum, si es necesario
+  // Ordena los resultados alfabéticamente por artista y luego por título del álbum
+  const resultadosOrdenados = resultadosBusqueda.value.sort((a, b) => {
+    // Primero compara por artista
     const comparacionArtista = a.artista.localeCompare(b.artista);
-    return comparacionArtista !== 0 ? comparacionArtista : a.tituloAlbum.localeCompare(b.tituloAlbum);
+    if (comparacionArtista !== 0) return comparacionArtista;
+    // Si los artistas son iguales, compara por título del álbum
+    return a.tituloAlbum.localeCompare(b.tituloAlbum);
   });
 
-  // Continúa con la creación del libro de Excel como antes, usando resultadosOrdenados
+  // Continúa con la creación del libro de Excel usando resultadosOrdenados
   const wb = XLSX.utils.book_new();
   
   // Asegúrate de incluir el género en los datos
-  const wsData = resultadosOrdenados.map(({ genero, artista, tituloAlbum, url }) => [genero, `${artista} - ${tituloAlbum}`, url]);
+  const wsData = resultadosOrdenados.map(({ genero, artista, tituloAlbum, url }) => {
+    // Incluye el enlace solo si la URL es válida
+    let link = url && url !== 'Error al realizar la búsqueda' && url !== 'No se encontró el álbum' ? url : 'No disponible';
+    return [genero, `${artista} - ${tituloAlbum}`, link];
+  });
   
   // Encabezados de columna incluyendo 'Género'
   wsData.unshift(['Género', 'Artista - Disco', 'Enlace']);
@@ -209,16 +213,19 @@ function exportarAHtmlComoTxt() {
       <table>
         <thead>
           <tr>
-            <th>Genero</th>
+            <th>Género</th>
             <th>Artista - Álbum</th>
             <th>Enlace</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="resultado in resultadosBusqueda" :key="resultado.url">
+          <tr v-for="resultado in resultadosBusqueda" :key="resultado.artista + resultado.tituloAlbum">
             <td>{{ resultado.genero }}</td>
             <td>{{ resultado.artista }} - {{ resultado.tituloAlbum }}</td>
-            <td><a :href="resultado.url" target="_blank">{{ resultado.url }}</a></td>
+            <td>
+              <a v-if="resultado.url && resultado.url !== 'Error al realizar la búsqueda' && resultado.url !== 'No se encontró el álbum'" :href="resultado.url" target="_blank">{{ resultado.url }}</a>
+              <span v-else>No disponible</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -227,9 +234,9 @@ function exportarAHtmlComoTxt() {
       <p>No hay resultados para mostrar.</p>
     </div>
 
-    <div class="export-button" v-if="resultadosBusqueda.length > 0">
-      <button @click="exportarAExcel">Exportar a Excel</button>
-      <button @click="exportarAHtmlComoTxt">Exportar a TXT</button>
+    <div class="export-buttons" v-if="resultadosBusqueda.length > 0">
+      <button class="export-button excel" @click="exportarAExcel">Exportar a Excel</button>
+      <button class="export-button txt" @click="exportarAHtmlComoTxt">Exportar a TXT</button>
     </div>
   </div>
 </template>
@@ -239,7 +246,6 @@ function exportarAHtmlComoTxt() {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  /* Espacio entre los elementos */
 }
 
 .file-upload {
@@ -266,7 +272,32 @@ th {
   background-color: #f2f2f2;
 }
 
-.export-button {
+.export-buttons {
+  display: flex;
+  gap: 10px; /* Añade espacio entre los botones */
   margin-top: 20px;
+}
+
+.export-button {
+  padding: 10px 15px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.excel {
+  background-color: #4CAF50; /* Verde */
+}
+
+.txt {
+  background-color: #2196F3; /* Azul */
+}
+
+.export-button:hover {
+  opacity: 0.8;
+}
+
+.export-button:active {
+  transform: scale(0.98); /* Efecto al pulsar */
 }
 </style>

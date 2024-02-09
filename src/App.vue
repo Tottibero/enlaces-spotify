@@ -3,7 +3,7 @@ import BuscadorEnlaces from './components/BuscadorEnlaces.vue';
 </script>
 
 <template>
-  <BuscadorEnlaces msg="Vite + Vue" />
+  <BuscadorEnlaces />
 </template>
 
 <style scoped>
