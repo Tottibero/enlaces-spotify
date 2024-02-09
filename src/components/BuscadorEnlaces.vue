@@ -8,6 +8,9 @@ import * as XLSX from 'xlsx';
 // Refs para datos reactivos
 const resultadosBusqueda = ref([]);
 const resultados = [];
+const lineasInvalidas = ref([]);
+const mostrarLineasInvalidas = ref(false); // Definir aquí
+
 // Obtiene el token de acceso de Spotify
 async function obtenerTokenSpotify() {
   const client_id = '5441ac276fc046da98adf7ffbfdb4924';
@@ -58,6 +61,7 @@ function cargarArchivo(event) {
 async function procesarYBuscar(contenido) {
   // Divide el contenido en líneas, asegurándose de eliminar espacios en blanco innecesarios
   // y filtrar líneas vacías
+  lineasInvalidas.value = [];
 
   let promesasBusqueda = contenido.map(fila => {
     // Asumiendo que el separador entre el género y el artista - título del álbum es '\t'
@@ -75,7 +79,7 @@ async function procesarYBuscar(contenido) {
         });
     } else {
       // En caso de que alguna línea no cumpla con el formato esperado después del trim
-      console.warn(`Línea no válida o con formato incorrecto: "${artistaTitulo}"`);
+      lineasInvalidas.value.push(`Línea no válida o con formato incorrecto: "${fila.join(' - ')}"`);
       return Promise.resolve(null); // Retorna null para estas líneas y las filtrará después
     }
   });
@@ -137,16 +141,19 @@ async function buscarAlbumEnSpotify(genero, artista, tituloAlbum) {
   }
 }
 
-function exportarAExcel() {
-  // Ordena los resultados alfabéticamente por artista y luego por título del álbum
-  const resultadosOrdenados = resultadosBusqueda.value.sort((a, b) => {
+function ordenarAlfabeticamente(){
+   return resultadosBusqueda.value.sort((a, b) => {
     // Primero compara por artista
     const comparacionArtista = a.artista.localeCompare(b.artista);
     if (comparacionArtista !== 0) return comparacionArtista;
     // Si los artistas son iguales, compara por título del álbum
     return a.tituloAlbum.localeCompare(b.tituloAlbum);
   });
+}
 
+function exportarAExcel() {
+  // Ordena los resultados alfabéticamente por artista y luego por título del álbum
+  const resultadosOrdenados = ordenarAlfabeticamente();
   // Continúa con la creación del libro de Excel usando resultadosOrdenados
   const wb = XLSX.utils.book_new();
   
@@ -168,13 +175,7 @@ function exportarAExcel() {
 // Función para generar la cadena HTML con ordenación y condicional para los enlaces
 function generarHTMLParaExportar() {
   // Ordena resultadosBusqueda alfabéticamente por artista y luego por título del álbum
-  const resultadosOrdenados = resultadosBusqueda.value.sort((a, b) => {
-    // Primero compara por artista
-    const comparacionArtista = a.artista.localeCompare(b.artista);
-    if (comparacionArtista !== 0) return comparacionArtista;
-    // Si los artistas son iguales, compara por título del álbum
-    return a.tituloAlbum.localeCompare(b.tituloAlbum);
-  });
+  const resultadosOrdenados = ordenarAlfabeticamente();
 
   let html = '<figure class="wp-block-table is-style-stripes"><table><tbody>';
   resultadosOrdenados.forEach(resultado => {
@@ -209,6 +210,16 @@ function exportarAHtmlComoTxt() {
       <input type="file" @change="cargarArchivo" />
     </div>
 
+    <div v-if="lineasInvalidas.length > 0">
+      <button @click="mostrarLineasInvalidas = !mostrarLineasInvalidas">Mostrar líneas inválidas</button>
+      <div v-show="mostrarLineasInvalidas">
+        <ol>
+          <li v-for="(linea, index) in lineasInvalidas" :key="index">{{ linea }}</li>
+        </ol>
+      </div>
+    </div>
+
+
     <div class="results" v-if="resultadosBusqueda.length > 0">
       <table>
         <thead>
@@ -235,6 +246,7 @@ function exportarAHtmlComoTxt() {
     </div>
 
     <div class="export-buttons" v-if="resultadosBusqueda.length > 0">
+      <button class="export-button orden" @click="ordenarAlfabeticamente">Ordenar alfabéticamente</button>
       <button class="export-button excel" @click="exportarAExcel">Exportar a Excel</button>
       <button class="export-button txt" @click="exportarAHtmlComoTxt">Exportar a TXT</button>
     </div>
@@ -261,6 +273,7 @@ table {
   border-collapse: collapse;
 }
 
+
 th,
 td {
   border: 1px solid #ddd;
@@ -269,7 +282,7 @@ td {
 }
 
 th {
-  background-color: #f2f2f2;
+  background-color: #646cff;
 }
 
 .export-buttons {
@@ -283,6 +296,10 @@ th {
   border: none;
   cursor: pointer;
   transition: background-color 0.3s ease;
+}
+
+.orden {
+  background-color: #e29843; /* Verde */
 }
 
 .excel {
