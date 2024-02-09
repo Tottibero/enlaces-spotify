@@ -6,9 +6,6 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 
 // Refs para datos reactivos
-const artistName = ref('');
-const albumTitle = ref('');
-const albumUrl = ref('');
 const resultadosBusqueda = ref([]);
 
 // Obtiene el token de acceso de Spotify
@@ -35,32 +32,43 @@ function cargarArchivo(event) {
   if (file) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const contenido = e.target.result;
+      const data = e.target.result;
+      const workbook = XLSX.read(data, {
+        type: 'binary'
+      });
+
+      // Assuming the first sheet is the one we need
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      // Convert the sheet to JSON
+      const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      // Skip the header row (first row) using slice(1)
+      const contenido = json.slice(1);
+
       procesarYBuscar(contenido);
     };
-    reader.readAsText(file);
+    reader.readAsBinaryString(file);
   }
 }
 
 async function procesarYBuscar(contenido) {
   // Divide el contenido en líneas, asegurándose de eliminar espacios en blanco innecesarios
   // y filtrar líneas vacías
-  const lineas = contenido.split('\n')
-    .map(linea => linea.trim()) // Asegura que se haga trim a cada línea
-    .filter(linea => linea !== ''); // Filtra líneas vacías después del trim
 
-  let promesasBusqueda = lineas.map(linea => {
-    // Asumiendo que el separador entre el artista y el título del álbum es ' - '
-    let [artista, tituloAlbum] = linea.split(' - ').map(parte => parte.trim()); // Hace trim de cada parte
+  let promesasBusqueda = contenido.map(fila => {
+    // Asumiendo que el separador entre el género y el artista - título del álbum es '\t'
+    let [genero, artistaTitulo] = fila; // No split needed here
+    let [artista, tituloAlbum] = artistaTitulo.split(' - ').map(parte => parte.trim());
 
     if (artista && tituloAlbum) {
-      return buscarAlbumEnSpotify(artista, tituloAlbum)
+      return buscarAlbumEnSpotify(genero, artista, tituloAlbum)
         .then(url => {
-          return { artista, tituloAlbum, url }; // Asegura que cada parte sea tratada correctamente
+          return { genero, artista, tituloAlbum, url }; // Asegura que cada parte sea tratada correctamente
         })
         .catch(error => {
           console.error(`Error al buscar: ${artista} - ${tituloAlbum}`, error);
-          return { artista, tituloAlbum, url: 'Error al realizar la búsqueda' };
+          return { genero, artista, tituloAlbum, url: 'Error al realizar la búsqueda' };
         });
     } else {
       // En caso de que alguna línea no cumpla con el formato esperado después del trim
@@ -81,13 +89,13 @@ async function procesarYBuscar(contenido) {
   resultadosBusqueda.value = resultados;
 }
 
-function ordenarAlfabeticamente(){
+function ordenarAlfabeticamente() {
   resultadosBusqueda.value.sort((a, b) => a.artista.localeCompare(b.artista));
 }
 
 
 // Busca el álbum en Spotify por nombre de artista y título de álbum
-async function buscarAlbumEnSpotify(artista, tituloAlbum) {
+async function buscarAlbumEnSpotify(genero, artista, tituloAlbum) {
   console.log("spotify", artista, tituloAlbum)
   const token = await obtenerTokenSpotify();
   if (!token) {
@@ -107,12 +115,14 @@ async function buscarAlbumEnSpotify(artista, tituloAlbum) {
       const album = response.data.albums.items[0];
       console.log(album)
       resultadosBusqueda.value.push({
+        genero: genero,
         artista: artista,
         tituloAlbum: tituloAlbum,
         url: album.external_urls.spotify,
       });
     } else {
       resultadosBusqueda.value.push({
+        genero: genero,
         artista: artista,
         tituloAlbum: tituloAlbum,
         url: 'No se encontró el álbum',
@@ -121,6 +131,7 @@ async function buscarAlbumEnSpotify(artista, tituloAlbum) {
   } catch (error) {
     console.error('Error al buscar el álbum en Spotify:', error);
     resultadosBusqueda.value.push({
+      genero: genero,
       artista: artista,
       tituloAlbum: tituloAlbum,
       url: 'Error al realizar la búsqueda',
@@ -138,11 +149,52 @@ function exportarAExcel() {
 
   // Continúa con la creación del libro de Excel como antes, usando resultadosOrdenados
   const wb = XLSX.utils.book_new();
-  const wsData = resultadosOrdenados.map(({ artista, tituloAlbum, url }) => [`${artista} - ${tituloAlbum}`, url]);
-  wsData.unshift(['Artista - Disco', 'Enlace']); // Encabezados de columna
+  
+  // Asegúrate de incluir el género en los datos
+  const wsData = resultadosOrdenados.map(({ genero, artista, tituloAlbum, url }) => [genero, `${artista} - ${tituloAlbum}`, url]);
+  
+  // Encabezados de columna incluyendo 'Género'
+  wsData.unshift(['Género', 'Artista - Disco', 'Enlace']);
+  
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
   XLSX.writeFile(wb, 'resultados.xlsx');
+}
+
+// Función para generar la cadena HTML con ordenación y condicional para los enlaces
+function generarHTMLParaExportar() {
+  // Ordena resultadosBusqueda alfabéticamente por artista y luego por título del álbum
+  const resultadosOrdenados = resultadosBusqueda.value.sort((a, b) => {
+    // Primero compara por artista
+    const comparacionArtista = a.artista.localeCompare(b.artista);
+    if (comparacionArtista !== 0) return comparacionArtista;
+    // Si los artistas son iguales, compara por título del álbum
+    return a.tituloAlbum.localeCompare(b.tituloAlbum);
+  });
+
+  let html = '<figure class="wp-block-table is-style-stripes"><table><tbody>';
+  resultadosOrdenados.forEach(resultado => {
+    // Verifica si resultado.url es una URL válida para incluir el enlace
+    const contenidoAlbum = resultado.url && resultado.url !== 'Error al realizar la búsqueda' && resultado.url !== 'No se encontró el álbum'
+      ? `<strong><a href="${resultado.url}" target="_blank" rel="noreferrer noopener">${resultado.artista} – ${resultado.tituloAlbum}</a></strong>`
+      : `<strong>${resultado.artista} – ${resultado.tituloAlbum}</strong>`; // Solo muestra texto si no hay URL válida
+
+    html += `<tr><td class="has-text-align-left" data-align="left">${resultado.genero}</td><td>${contenidoAlbum}</td></tr>`;
+  });
+  html += '</tbody></table></figure>';
+  return html;
+}
+
+// Función para exportar a archivo .txt
+function exportarAHtmlComoTxt() {
+  const html = generarHTMLParaExportar();
+  const blob = new Blob([html], { type: 'text/plain;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'resultados.txt';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 </script>
@@ -157,12 +209,14 @@ function exportarAExcel() {
       <table>
         <thead>
           <tr>
+            <th>Genero</th>
             <th>Artista - Álbum</th>
             <th>Enlace</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="resultado in resultadosBusqueda" :key="resultado.url">
+            <td>{{ resultado.genero }}</td>
             <td>{{ resultado.artista }} - {{ resultado.tituloAlbum }}</td>
             <td><a :href="resultado.url" target="_blank">{{ resultado.url }}</a></td>
           </tr>
@@ -175,6 +229,7 @@ function exportarAExcel() {
 
     <div class="export-button" v-if="resultadosBusqueda.length > 0">
       <button @click="exportarAExcel">Exportar a Excel</button>
+      <button @click="exportarAHtmlComoTxt">Exportar a TXT</button>
     </div>
   </div>
 </template>
@@ -183,7 +238,8 @@ function exportarAExcel() {
 .container {
   display: flex;
   flex-direction: column;
-  gap: 20px; /* Espacio entre los elementos */
+  gap: 20px;
+  /* Espacio entre los elementos */
 }
 
 .file-upload {
@@ -199,7 +255,8 @@ table {
   border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
   border: 1px solid #ddd;
   padding: 8px;
   text-align: left;
