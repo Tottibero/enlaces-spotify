@@ -31,9 +31,6 @@ async function obtenerTokenSpotify() {
 }
 
 function cargarArchivo(event) {
-
-  resultadosBusqueda.value = []; // Limpia los resultados reactivos
-
   const file = event.target.files[0];
   if (file) {
     const reader = new FileReader();
@@ -49,8 +46,8 @@ function cargarArchivo(event) {
 
       // Convert the sheet to JSON
       const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      // Skip the header row (first row) using slice(1)
-      const contenido = json.slice(1);
+      // Se elimina la llamada a slice(1) para no omitir la primera fila
+      const contenido = json; // Se procesa todo el contenido desde la primera fila
 
       procesarYBuscar(contenido);
     };
@@ -62,6 +59,7 @@ async function procesarYBuscar(contenido) {
   // Divide el contenido en líneas, asegurándose de eliminar espacios en blanco innecesarios
   // y filtrar líneas vacías
   lineasInvalidas.value = [];
+  resultadosBusqueda.value = []; // Limpia los resultados reactivos
 
   let promesasBusqueda = contenido.map(fila => {
     // Asumiendo que el separador entre el género y el artista - título del álbum es '\t'
@@ -141,8 +139,8 @@ async function buscarAlbumEnSpotify(genero, artista, tituloAlbum) {
   }
 }
 
-function ordenarAlfabeticamente(){
-   return resultadosBusqueda.value.sort((a, b) => {
+function ordenarAlfabeticamente() {
+  return resultadosBusqueda.value.sort((a, b) => {
     // Primero compara por artista
     const comparacionArtista = a.artista.localeCompare(b.artista);
     if (comparacionArtista !== 0) return comparacionArtista;
@@ -156,17 +154,17 @@ function exportarAExcel() {
   const resultadosOrdenados = ordenarAlfabeticamente();
   // Continúa con la creación del libro de Excel usando resultadosOrdenados
   const wb = XLSX.utils.book_new();
-  
+
   // Asegúrate de incluir el género en los datos
   const wsData = resultadosOrdenados.map(({ genero, artista, tituloAlbum, url }) => {
     // Incluye el enlace solo si la URL es válida
     let link = url && url !== 'Error al realizar la búsqueda' && url !== 'No se encontró el álbum' ? url : 'No disponible';
     return [genero, `${artista} - ${tituloAlbum}`, link];
   });
-  
+
   // Encabezados de columna incluyendo 'Género'
   wsData.unshift(['Género', 'Artista - Disco', 'Enlace']);
-  
+
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   XLSX.utils.book_append_sheet(wb, ws, 'Resultados');
   XLSX.writeFile(wb, 'resultados.xlsx');
@@ -205,6 +203,7 @@ function exportarAHtmlComoTxt() {
 </script>
 
 <template>
+  <h1>Buscador Enlaces</h1>
   <div class="container">
     <div class="file-upload">
       <input type="file" @change="cargarArchivo" />
@@ -234,7 +233,8 @@ function exportarAHtmlComoTxt() {
             <td>{{ resultado.genero }}</td>
             <td>{{ resultado.artista }} - {{ resultado.tituloAlbum }}</td>
             <td>
-              <a v-if="resultado.url && resultado.url !== 'Error al realizar la búsqueda' && resultado.url !== 'No se encontró el álbum'" :href="resultado.url" target="_blank">{{ resultado.url }}</a>
+              <a v-if="resultado.url && resultado.url !== 'Error al realizar la búsqueda' && resultado.url !== 'No se encontró el álbum'"
+                :href="resultado.url" target="_blank">{{ resultado.url }}</a>
               <span v-else>No disponible</span>
             </td>
           </tr>
@@ -287,7 +287,8 @@ th {
 
 .export-buttons {
   display: flex;
-  gap: 10px; /* Añade espacio entre los botones */
+  gap: 10px;
+  /* Añade espacio entre los botones */
   margin-top: 20px;
 }
 
@@ -299,15 +300,18 @@ th {
 }
 
 .orden {
-  background-color: #e29843; /* Verde */
+  background-color: #e29843;
+  /* Verde */
 }
 
 .excel {
-  background-color: #4CAF50; /* Verde */
+  background-color: #4CAF50;
+  /* Verde */
 }
 
 .txt {
-  background-color: #2196F3; /* Azul */
+  background-color: #2196F3;
+  /* Azul */
 }
 
 .export-button:hover {
@@ -315,6 +319,6 @@ th {
 }
 
 .export-button:active {
-  transform: scale(0.98); /* Efecto al pulsar */
-}
-</style>
+  transform: scale(0.98);
+  /* Efecto al pulsar */
+}</style>

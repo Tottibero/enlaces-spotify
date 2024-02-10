@@ -1,9 +1,11 @@
-<script setup>
-import BuscadorEnlaces from './components/BuscadorEnlaces.vue';
-</script>
-
 <template>
-  <BuscadorEnlaces />
+  <div id="app">
+    <nav>
+      <router-link to="/">Buscador</router-link> | 
+      <router-link to="/limpiador">Limpiar Listado</router-link>
+    </nav>
+    <router-view/>
+  </div>
 </template>
 
 <style scoped>
