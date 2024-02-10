@@ -4,12 +4,12 @@ import LimpiarListadoComponent from '../components/LimpiarListado.vue';
 
 const routes = [
   {
-    path: '/',
+    path: '/enlaces-spotify/',
     name: 'Buscador',
     component: BuscadorEnlacesComponent,
   },
   {
-    path: '/limpiador',
+    path: '/enlaces-spotify/limpiador',
     name: 'LimpiarListado',
     component: LimpiarListadoComponent,
   },
